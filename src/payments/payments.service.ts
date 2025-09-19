@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { envs, NATS_SERVICE } from 'src/config';
 import Stripe from 'stripe';
 import { CreatePaymentSessionDto } from './dtos';
@@ -6,6 +6,8 @@ import { ClientProxy, RpcException } from '@nestjs/microservices';
 
 @Injectable()
 export class PaymentsService {
+
+    private logger = new Logger("Payments Service");
 
     private readonly stripe = new Stripe( envs.STRIPE_SECRET );
 
@@ -29,7 +31,9 @@ export class PaymentsService {
     
             const session = await this.stripe.checkout.sessions.create({
                 payment_intent_data: {
-                    metadata: { orderId }
+                    metadata: { 
+                        orderId
+                     }
                 },
                 line_items: line_items,
                 mode: 'payment',
@@ -43,10 +47,10 @@ export class PaymentsService {
                 url: session.url,
             };
         } catch (error) {
-            console.error(error);
+            this.logger.error('Error al crear la sesión de pago: '  +error);
             throw new RpcException({
                 status: HttpStatus.INTERNAL_SERVER_ERROR,
-                message: `Failed to create payment session`
+                message: `Error al crear la sesión de pago`
             })
         }
 
@@ -67,10 +71,10 @@ export class PaymentsService {
                 envs.STRIPE_ENDPOINT_SECRET
             );
         } catch (err) {
-            console.error(err.message);
+            this.logger.error(err);
             throw new RpcException({
-                status: HttpStatus.BAD_REQUEST,
-                message: `Webhook signature verification failed`
+                status: HttpStatus.INTERNAL_SERVER_ERROR,
+                message: `Falló la verificación del signature`
             });
         }
 
@@ -85,7 +89,7 @@ export class PaymentsService {
                 this.client.emit('payment.succeeded', payload);
             break;
             default:
-                console.log(`Event ${event.type} not handled`);
+                this.logger.log(`Evento ${event.type} no manejado`);
         }
         return signature;
     }
